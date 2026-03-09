@@ -1,9 +1,9 @@
 import pyrtma
 import sys
+
 sys.path.append("../")
 import msg_defs.test_defs2 as md
 from pyrtma.message import get_msg_defs
-
 
 c = pyrtma.Client()
 c.connect(server_name="127.0.0.1:7111")
