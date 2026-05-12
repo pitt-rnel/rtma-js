@@ -23,7 +23,9 @@ Javascript rtma/websocket client.
 
 ## Installing as dependency
 To install rtma-js as a npm package into your react project:
+`npm install rtma-js`
 
+## Install locally
 1. Clone this repo
 
     `git clone github.com/pitt-rnel/rtma-js`
@@ -36,35 +38,35 @@ To install rtma-js as a npm package into your react project:
    
    `npm install ../../rtma-js`
 
-4. Using RTMAClient
+## Using RTMAClient
 
-    ```js
-    import { RTMA } from "climber_message";
-    import { RTMAClient } from "rtma-js";
+```js
+ import { RTMA } from "climber_message";
+ import { RTMAClient } from "rtma-js";
 
-    export default function Main() {    
-        const server = "127.0.0.1";
-        const port = 5678;
-        const module_id = 0;
+ export default function Main() {    
+     const server = "127.0.0.1";
+     const port = 5678;
+     const module_id = 0;
 
-        const client = new RTMAClient(server, port, module_id);
+     const client = new RTMAClient(server, port, module_id);
 
-        //install handlers before connecting
-        client.on_connect = () => {
-            // subscribe to an array of RTMA messages
-            client.subscribe([RTMA.MT.EXAMPLE_MSG]);
-        }
+     //install handlers before connecting
+     client.on_connect = () => {
+         // subscribe to an array of RTMA messages
+         client.subscribe([RTMA.MT.EXAMPLE_MSG]);
+     }
 
-        client.on_message = (msg) => {
-            // your logic here
-            if (msg.header.msg_type === RTMA.MT.EXAMPLE_MSG){
-                const data = msg.data;
-                const reply_msg = RTMA.MDF.EXAMPLE_MSG_REPLY();
-                client.send_message(RTMA.MT.EXAMPLE_MSG_REPLY, reply_msg);
-            }
-        }
+     client.on_message = (msg) => {
+         // your logic here
+         if (msg.header.msg_type === RTMA.MT.EXAMPLE_MSG){
+             const data = msg.data;
+             const reply_msg = RTMA.MDF.EXAMPLE_MSG_REPLY();
+             client.send_message(RTMA.MT.EXAMPLE_MSG_REPLY, reply_msg);
+         }
+     }
 
-        client.connect();
+     client.connect();
 
-    }      
-    ```
+ }      
+```
