@@ -1,7 +1,7 @@
 {
   "name": "rtma-js",
   "version": "1.0.0",
-  "description": "RTMA JavaScript client for web-manager that works with message manager. ",
+  "description": "RTMA JavaScript client",
   "main": "index.js",
   "directories": {
     "example": "example"
@@ -9,9 +9,17 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pitt-rnel/rtma-js.git"
+  },
   "keywords": [
     "rtma"
   ],
-  "author": "Biying Zhang <biz34@pitt.edu>",
-  "license": "ISC"
+  "author": "RNEL (https://www.rnel.pitt.edu)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pitt-rnel/rtma-js/issues"
+  },
+  "homepage": "https://github.com/pitt-rnel/rtma-js"
 }
