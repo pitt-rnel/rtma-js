@@ -1,5 +1,5 @@
 message_defs:
-  PING:
+  TEST_PING:
     id: 1000
     fields:
       serial_no: int

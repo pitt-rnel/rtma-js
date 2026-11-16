@@ -19,11 +19,11 @@ let prev_serial = null;
 var stats = document.getElementById('stats');
 
 client.on_connect = () => {
-    client.subscribe([RTMA.MT.PING]);
+    client.subscribe([RTMA.MT.TEST_PING]);
 }
 
 client.on_message = (msg) => {
-    if (msg.header.msg_type == RTMA.MT.PING) {
+    if (msg.header.msg_type == RTMA.MT.TEST_PING) {
         if (prev_serial === null) {
             prev_serial = msg.data.serial_no;
         }

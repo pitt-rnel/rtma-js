@@ -7,17 +7,17 @@ import statistics
 
 c = pyrtma.Client()
 c.connect(server_name="127.0.0.1:7111")
-msg = msg_defs.test_defs.MDF_PING()
+msg = msg_defs.test_defs.MDF_TEST_PING()
 stats = [0.0 for _ in range(250)]
 i = 0
-c.subscribe([msg_defs.test_defs.MT_PING])
+c.subscribe([msg_defs.test_defs.MT_TEST_PING])
 
 tot_max = -1
 while True:
     msg = c.read_message(timeout=0.100)
     if msg is None:
         continue
-    if msg.type_id == msg_defs.test_defs.MT_PING:
+    if msg.type_id == msg_defs.test_defs.MT_TEST_PING:
         stats[i] = msg.header.recv_time - msg.header.send_time
         i += 1
         if i == 250:
