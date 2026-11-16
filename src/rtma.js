@@ -363,8 +363,8 @@ export class RTMAClient {
       msg.msg_type = msg_type;
       console.log(`rtma.js: Subscribing to ${msg_type}`);
       this.send_message(CORE.MT.SUBSCRIBE, msg);
+      this.subscribed_types.add(msg_type);
     });
-    this.subscribed_types.union(new Set(msg_types));
   }
 
   unsubscribe(msg_types) {
@@ -373,8 +373,8 @@ export class RTMAClient {
       msg.msg_type = msg_type;
       console.log(`rtma.js: Unsubscribing to ${msg_type}`);
       this.send_message(CORE.MT.UNSUBSCRIBE, msg);
+      this.subscribed_types.delete(msg_type);
     });
-    this.subscribed_types.difference(new Set(msg_types));
   }
 
   error_handler(msg) {
@@ -480,6 +480,8 @@ export class RTMAClient {
   }
 
   connect() {
+    // Each websocket gets a new proxy client, which has no subscriptions.
+    this.subscribed_types.clear();
     this.ws = new WebSocket(`ws://${this.server}:${this.port}`);
     const self = this;
 
