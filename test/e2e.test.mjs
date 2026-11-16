@@ -138,11 +138,20 @@ test(
       errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
 
     const connected = new Promise((res) => (client.on_connect = res));
-    const got_ping = new Promise((res) => {
-      client.on_message = (msg) => {
-        if (msg.header.msg_type === RTMA.MT.TEST_PING) res(msg);
-      };
-    });
+    let ping_received, double_received;
+    const got_ping = new Promise((res) => (ping_received = res));
+    const got_double = new Promise((res) => (double_received = res));
+    client.on_message = (msg) => {
+      const type = msg.header.msg_type;
+      if (type === RTMA.MT.TEST_PING) ping_received(msg);
+      // The client also gets its own TEST_DOUBLE. Wait for the peer's.
+      if (
+        type === RTMA.MT.TEST_DOUBLE &&
+        msg.header.src_mod_id !== client.module_id
+      ) {
+        double_received(msg);
+      }
+    };
     client.connect();
     await wait_for(connected, "the connection ACK");
     let close_info = "none";
@@ -151,13 +160,21 @@ test(
     });
     assert.ok(client.module_id >= 10000, `module ID ${client.module_id}`);
 
-    client.subscribe([RTMA.MT.TEST_PING]);
-    assert.deepEqual([...client.subscribed_types], [RTMA.MT.TEST_PING]);
+    const types = [RTMA.MT.TEST_PING, RTMA.MT.TEST_DOUBLE];
+    client.subscribe(types);
+    assert.deepEqual([...client.subscribed_types], types);
+
+    // NaN has no JSON form, so this checks that it gets to Python and back.
+    const double = { x: NaN, v: [NaN, -1.5, 2.5], label: "NaN Infinity" };
+    client.send_message(RTMA.MT.TEST_DOUBLE, double);
+
     const status = RTMA.MDF.STATUS();
     status.msg = "subscribed";
     status.msg_length = status.msg.length;
     client.send_message(RTMA.MT.STATUS, status);
 
+    const echo = await wait_for(got_double, "TEST_DOUBLE from the peer");
+    assert.deepStrictEqual(echo.data, double);
     const ping = await wait_for(got_ping, "TEST_PING from the peer");
     assert.equal(ping.data.serial_no, 42);
 
@@ -168,8 +185,10 @@ test(
     assert.equal(seen.status_bytes, 1028);
     assert.equal(seen.status_msg, "subscribed");
     assert.equal(seen.hello_name, NAME);
+    assert.deepEqual(seen.double, ["nan", ["nan", "-1.5", "2.5"]]);
+    assert.equal(seen.double_label, "NaN Infinity");
 
-    client.unsubscribe([RTMA.MT.TEST_PING]);
+    client.unsubscribe(types);
     assert.deepEqual([...client.subscribed_types], []);
 
     const closed = new Promise((res) => (client.on_disconnect = res));
