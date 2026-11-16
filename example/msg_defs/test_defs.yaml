@@ -27,3 +27,10 @@ message_defs:
     fields:
       msg_length: int
       msg: char[1024]
+
+  TEST_DOUBLE:
+    id: 1003
+    fields:
+      x: double
+      v: double[3]
+      label: char[16]

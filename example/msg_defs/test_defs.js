@@ -142,6 +142,7 @@ RTMA.MT.LM_READY = 96;
 RTMA.MT.TEST_PING = 1000;
 RTMA.MT.RASTER = 1001;
 RTMA.MT.STATUS = 1002;
+RTMA.MT.TEST_DOUBLE = 1003;
 
 // Struct Definitions
 RTMA.SDF = {};
@@ -542,6 +543,14 @@ RTMA.MDF.STATUS = () => {
   }
 };
 
+RTMA.MDF.TEST_DOUBLE = () => {
+  return {
+    x: type_map.double(),
+    v: Array.from({ length: 3 }, () => type_map.double()),
+    label: type_map.string(16)
+  }
+};
+
 // Message Definition Hashes
 RTMA.HASH = {};
 
@@ -601,3 +610,4 @@ RTMA.HASH.LM_READY = "4863b960";
 RTMA.HASH.TEST_PING = "1e2c687c";
 RTMA.HASH.RASTER = "3e9f038a";
 RTMA.HASH.STATUS = "b54a4068";
+RTMA.HASH.TEST_DOUBLE = "ca5dbb9c";
