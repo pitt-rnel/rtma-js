@@ -162,6 +162,7 @@ export class RTMAClient {
     this.ws = null;
     this.connect_ack = false;
     this.subscribed_types = new Set([]);
+    this.keepalive_timer = null;
 
     this.on_connect = () => {};
 
@@ -190,8 +191,18 @@ export class RTMAClient {
     this.on_message = (msg) => {
       console.log(`rmta.js on_message: ${JSON.stringify(msg)}`);
     };
+  }
 
-    setInterval(this._send_keepalive.bind(this), 750);
+  _start_keepalive() {
+    this._stop_keepalive();
+    this.keepalive_timer = setInterval(this._send_keepalive.bind(this), 750);
+  }
+
+  _stop_keepalive() {
+    if (this.keepalive_timer !== null) {
+      clearInterval(this.keepalive_timer);
+      this.keepalive_timer = null;
+    }
   }
 
   _send_keepalive() {
@@ -389,10 +400,12 @@ export class RTMAClient {
     this.ws.onopen = (event) => {
       self.ready = true;
       self.connected = false;
+      self._start_keepalive();
       self._connect();
     };
 
     this.ws.onclose = (event) => {
+      self._stop_keepalive();
       self.ready = false;
       self.connected = false;
       self.disconnect();
