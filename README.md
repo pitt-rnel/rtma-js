@@ -81,3 +81,7 @@ To install rtma-js as a npm package into your react project:
 
  }      
 ```
+
+## Running the tests
+
+`npm test` needs Node 22 or later. The end-to-end test also needs Python with pyrtma installed, and is skipped without it. Set `PYTHON` to choose the Python, and `RTMA_MM` to test against another message manager, with `{port}` for its port, for example `RTMA_MM="MessageManager :{port}"`.
