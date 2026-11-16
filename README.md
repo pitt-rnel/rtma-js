@@ -2,13 +2,22 @@
 
 Javascript rtma/websocket client.
 
+rtma-js 4 talks to the pyrtma 4 web manager. Earlier web managers are not supported.
+
 1. Install the latest [pyrtma](https://github.com/pitt-rnel/pyrtma/):
 
     `pip install pyrtma`
 
-2. Write and build message defs for python and js (see [pyrtma documentation](https://pyrtma.readthedocs.io/)):
+2. Write message defs and list them in a `.defs` index file (see [pyrtma documentation](https://pyrtma.readthedocs.io/)), for example `message_defs.defs`:
 
-    `python -m pyrtma.compile -i message_defs.yaml --py --js`
+    ```yaml
+    index:
+      message_defs: message_defs.yaml
+    ```
+
+    Build them for python and js:
+
+    `python -m pyrtma.compile -i message_defs.defs --py --js`
 
 3. Run Message Manager:
 
@@ -47,9 +56,11 @@ To install rtma-js as a npm package into your react project:
  export default function Main() {    
      const server = "127.0.0.1";
      const port = 5678;
-     const module_id = 0;
+     const module_id = 0; // the web manager always assigns a dynamic ID
+     const host_id = 0;
+     const name = "my_web_app"; // optional, ASCII, up to 31 characters
 
-     const client = new RTMAClient(server, port, module_id);
+     const client = new RTMAClient(server, port, module_id, host_id, name);
 
      //install handlers before connecting
      client.on_connect = () => {
