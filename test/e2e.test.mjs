@@ -134,7 +134,8 @@ test(
 
     const client = new RTMAClient("127.0.0.1", ws_port, 0, 0, NAME);
     const errors = [];
-    client.on_error = (e) => errors.push(e.rtma_msg_error ?? String(e));
+    client.on_error = (e) =>
+      errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
 
     const connected = new Promise((res) => (client.on_connect = res));
     const got_ping = new Promise((res) => {
@@ -144,6 +145,10 @@ test(
     });
     client.connect();
     await wait_for(connected, "the connection ACK");
+    let close_info = "none";
+    client.ws.addEventListener("close", (e) => {
+      close_info = `code ${e.code}, wasClean ${e.wasClean}`;
+    });
     assert.ok(client.module_id >= 10000, `module ID ${client.module_id}`);
 
     client.subscribe([RTMA.MT.TEST_PING]);
@@ -171,6 +176,6 @@ test(
     client.disconnect();
     await wait_for(closed, "the websocket to close");
     assert.equal(client.keepalive_timer, null);
-    assert.deepEqual(errors, []);
+    assert.deepEqual(errors, [], `websocket close: ${close_info}`);
   }
 );
