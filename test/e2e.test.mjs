@@ -176,6 +176,7 @@ test(
     client.disconnect();
     await wait_for(closed, "the websocket to close");
     assert.equal(client.keepalive_timer, null);
+    assert.equal(close_info, "code 1000, wasClean true");
     assert.deepEqual(errors, [], `websocket close: ${close_info}`);
   }
 );
