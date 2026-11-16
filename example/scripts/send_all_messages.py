@@ -3,12 +3,11 @@ import sys
 
 sys.path.append("../")
 import msg_defs.test_defs2 as md
-from pyrtma.message import get_msg_defs
 
 c = pyrtma.Client()
 c.connect(server_name="127.0.0.1:7111")
 
-for mt, mdf in get_msg_defs().items():
+for mt, mdf in c.definitions.msg_defs.items():
     if mt > 1200:
         c.subscribe([mt])
         msg = c._wait_for_acknowledgement()
