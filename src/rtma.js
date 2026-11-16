@@ -138,6 +138,49 @@ function now_seconds() {
   return (performance.timeOrigin + performance.now()) / 1000;
 }
 
+// pyrtma writes NaN, Infinity and -Infinity as bare tokens, which JSON
+// doesn't allow. A marker string carries each one through JSON instead: a NUL
+// followed by the token. pyrtma strings end at their first NUL, so no string
+// from pyrtma can look like a marker.
+const NONFINITE_TOKENS = /"(?:[^"\\]|\\.)*"|-?Infinity|NaN/g;
+const NONFINITE_MARKERS = /"\\u0000(NaN|-?Infinity)"/g;
+
+function parse_json(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    if (!(e instanceof SyntaxError)) throw e;
+  }
+  // Mark the tokens outside strings, then turn the markers into numbers.
+  const marked = text.replace(NONFINITE_TOKENS, (m) =>
+    m[0] === '"' ? m : `"\\u0000${m}"`
+  );
+  const msg = JSON.parse(marked);
+  unmark(msg);
+  return msg;
+}
+
+function unmark(obj) {
+  for (const key in obj) {
+    const value = obj[key];
+    if (typeof value === "string") {
+      if (value.charCodeAt(0) === 0) obj[key] = Number(value.slice(1));
+    } else if (value !== null && typeof value === "object") {
+      unmark(value);
+    }
+  }
+}
+
+function to_json(value) {
+  // JSON.stringify writes non-finite numbers as null, so only a message with
+  // null in it needs the slower pass that marks them.
+  const text = JSON.stringify(value);
+  if (!text.includes("null")) return text;
+  return JSON.stringify(value, (key, v) =>
+    typeof v === "number" && !Number.isFinite(v) ? `\u0000${v}` : v
+  ).replace(NONFINITE_MARKERS, "$1");
+}
+
 // CONNECT_V2 carries the name as ASCII in char[MAX_NAME_LEN] (32), which
 // includes the terminating null.
 const MAX_NAME_CHARS = 31;
@@ -232,7 +275,7 @@ export class RTMAClient {
     hdr.num_data_bytes = 0;
 
     // Send through the websocket
-    this.ws.send(JSON.stringify({ header: hdr, data: msg_data }));
+    this.ws.send(to_json({ header: hdr, data: msg_data }));
 
     this.msg_count++;
   }
@@ -433,7 +476,7 @@ export class RTMAClient {
       }
 
       // Decode the rtma msg as json
-      const msg = JSON.parse(event.data.replace(/Infinity/g, "1e1000"));
+      const msg = parse_json(event.data);
 
       // Handle error messages from the ws server
       if (msg.hasOwnProperty("error")) {
