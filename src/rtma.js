@@ -6,7 +6,6 @@ const CORE = {
     EXIT: 0,
     ACKNOWLEDGE: 2,
     CONNECT_V2: 4,
-    CONNECT: 13,
     DISCONNECT: 14,
     SUBSCRIBE: 15,
     UNSUBSCRIBE: 16,
@@ -44,13 +43,6 @@ const CORE = {
         mod_id: 0,
         pid: 0,
         name: "",
-      };
-    },
-
-    CONNECT: () => {
-      return {
-        logger_status: 0,
-        daemon_status: 0,
       };
     },
 
@@ -140,8 +132,23 @@ const CORE = {
   },
 };
 
+// CONNECT_V2 carries the name as ASCII in char[MAX_NAME_LEN] (32), which
+// includes the terminating null.
+const MAX_NAME_CHARS = 31;
+
 export class RTMAClient {
-  constructor(server = "127.0.0.1", port = 5678, module_id = 0, host_id = 0) {
+  constructor(
+    server = "127.0.0.1",
+    port = 5678,
+    module_id = 0,
+    host_id = 0,
+    name = ""
+  ) {
+    if (!/^[\x01-\x7f]*$/.test(name) || name.length > MAX_NAME_CHARS) {
+      throw new RangeError(
+        `rtma.js: module name "${name}" must be ASCII, up to ${MAX_NAME_CHARS} characters`
+      );
+    }
     this.server = server;
     this.port = port;
     this.ready = false;
@@ -149,6 +156,7 @@ export class RTMAClient {
     this.connected = false;
     this.host_id = host_id;
     this.module_id = module_id;
+    this.name = name;
     this.msg_count = 0;
     this.pending_ack = false;
     this.ws = null;
@@ -231,10 +239,11 @@ export class RTMAClient {
 
   _connect() {
     console.log("rtma.js: connect");
-    const msg = CORE.MDF.CONNECT();
+    const msg = CORE.MDF.CONNECT_V2();
     msg.logger_status = 0;
-    msg.daemon_status = 0;
-    this.send_message(CORE.MT.CONNECT, msg);
+    msg.mod_id = this.module_id;
+    msg.name = this.name;
+    this.send_message(CORE.MT.CONNECT_V2, msg);
     this.connect_ack = true;
   }
 
@@ -300,7 +309,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG_CRITICAL();
     msg.time = Date.now()/1000;
     msg.level = 50;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     console.error("CRITICAL: " + msg_text);
@@ -312,7 +321,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG_ERROR();
     msg.time = Date.now()/1000;
     msg.level = 40;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     console.error("ERROR: " + msg_text);
@@ -324,7 +333,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG_WARNING();
     msg.time = Date.now()/1000;
     msg.level = 30;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     console.warn("WARNING: " + msg_text);
@@ -336,7 +345,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG_INFO();
     msg.time = Date.now()/1000;
     msg.level = 20;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     console.log("INFO: " + msg_text);
@@ -348,7 +357,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG_DEBUG();
     msg.time = Date.now()/1000;
     msg.level = 10;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     console.debug("DEBUG: " + msg_text);
@@ -360,7 +369,7 @@ export class RTMAClient {
     const msg = CORE.MDF.RTMA_LOG();
     msg.time = Date.now()/1000;
     msg.level = level;
-    msg.name = this.module_id.toString();
+    msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
     
     if (level < 20) { console.debug("LOG: " + msg_text); }
