@@ -1,51 +1,21 @@
+// The core message types and definitions that this client uses. They match
+// pyrtma v4's core_defs/rtma_core.yaml. Applications get the full set of core
+// definitions from their own message definitions, compiled by pyrtma.
 const CORE = {
-  constants: {
-    MAX_MODULES: 200,
-    DYN_MOD_ID_START: 100,
-    MAX_HOSTS: 5,
-    MAX_MESSAGE_TYPES: 10000,
-    MIN_STREAM_TYPE: 9000,
-    MAX_TIMERS: 100,
-    MAX_INTERNAL_TIMERS: 20,
-    MAX_RTMA_MSG_TYPE: 99,
-    MAX_RTMA_MODULE_ID: 9,
-    MAX_LOGGER_FILENAME_LENGTH: 256,
-    MAX_CONTIGUOUS_MESSAGE_DATA: 9000,
-    HID_LOCAL_HOST: 0,
-    HID_ALL_HOSTS: 0x7fff,
-    ALL_MESSAGE_TYPES: 0x7fffffff,
-  },
-
   MT: {
     EXIT: 0,
-    KILL: 1,
     ACKNOWLEDGE: 2,
+    CONNECT_V2: 4,
     CONNECT: 13,
     DISCONNECT: 14,
     SUBSCRIBE: 15,
     UNSUBSCRIBE: 16,
-    PAUSE_SUBSCRIPTION: 85,
-    FAIL_SUBSCRIBE: 6,
-    FAILED_MESSAGE: 8,
-    FORCED_DISCONNECT: 82,
-    MODULE_READY: 26,
-    SAVE_MESSAGE_LOG: 56,
-    TIMING_MESSAGE: 80,
     RTMA_LOG: 40,
     RTMA_LOG_CRITICAL: 41,
     RTMA_LOG_ERROR: 42,
     RTMA_LOG_WARNING: 43,
     RTMA_LOG_INFO: 44,
-    RTMA_LOG_DEBUG: 45
-  },
-
-  MID: {
-    MESSAGE_MANAGER: 0,
-    COMMAND_MODULE: 1,
-    APPLICATION_MODULE: 2,
-    NETWORK_RELAY: 3,
-    STATUS_MODULE: 4,
-    QUICKLOGGER: 5,
+    RTMA_LOG_DEBUG: 45,
   },
 
   MDF: {
@@ -66,6 +36,17 @@ const CORE = {
       };
     },
 
+    CONNECT_V2: () => {
+      return {
+        logger_status: 0,
+        reserved: 0,
+        reserved1: 0,
+        mod_id: 0,
+        pid: 0,
+        name: "",
+      };
+    },
+
     CONNECT: () => {
       return {
         logger_status: 0,
@@ -82,75 +63,6 @@ const CORE = {
     UNSUBSCRIBE: () => {
       return {
         msg_type: 0,
-      };
-    },
-
-    PAUSE_SUBSCRIPTION: () => {
-      return {
-        msg_type: 0,
-      };
-    },
-
-    RESUME_SUBSCRIPTION: () => {
-      return {
-        msg_type: 0,
-      };
-    },
-
-    FAIL_SUBSCRIBE: () => {
-      return {
-        mod_id: 0,
-        reserved: 0,
-        msg_type: 0,
-      };
-    },
-
-    FAILED_MESSAGE: () => {
-      return {
-        dest_mod_id: 0,
-        reserved: 0,
-        time_of_failure: 0,
-        msg_header: {
-          msg_type: 0,
-          msg_count: 0,
-          send_time: 0,
-          recv_time: 0,
-          src_host_id: 0,
-          src_mod_id: 0,
-          dest_host_id: 0,
-          dest_mod_id: 0,
-          num_data_bytes: 0,
-          remaining_bytes: 0,
-          is_dynamic: 0,
-          reserved: 0,
-        },
-      };
-    },
-
-    FORCE_DISCONNECT: () => {
-      return {
-        mod_id: 0,
-      };
-    },
-
-    MODULE_READY: () => {
-      return {
-        mod_id: 0,
-      };
-    },
-
-    SAVE_MESSAGE_LOG: () => {
-      return {
-        pathname: "",
-        pathname_length: 0,
-      };
-    },
-
-    TIMING_MESSAGE: () => {
-      return {
-        timing: Array(MAX_MESSAGE_TYPES).fill(0),
-        ModulePID: Array(MAX_MODULES).fill(0),
-        send_time: 0,
       };
     },
 
@@ -224,26 +136,6 @@ const CORE = {
         funcname: "",
         message: "",
       };
-    },
-
-    EXIT: () => {
-      return {};
-    },
-
-    KILL: () => {
-      return {};
-    },
-
-    ACKNOWLEDGE: () => {
-      return {};
-    },
-
-    DISCONNECT: () => {
-      return {};
-    },
-
-    FORCED_DISCONNECT: () => {
-      return {};
     },
   },
 };
