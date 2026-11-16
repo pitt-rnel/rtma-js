@@ -132,6 +132,12 @@ const CORE = {
   },
 };
 
+// The current time in seconds since the Unix epoch, with sub-millisecond
+// resolution. Used for both send_time and recv_time, so the two compare.
+function now_seconds() {
+  return (performance.timeOrigin + performance.now()) / 1000;
+}
+
 // CONNECT_V2 carries the name as ASCII in char[MAX_NAME_LEN] (32), which
 // includes the terminating null.
 const MAX_NAME_CHARS = 31;
@@ -216,7 +222,7 @@ export class RTMAClient {
     hdr.msg_type = msg_type;
     hdr.msg_count = this.msg_count;
     hdr.recv_time = 0;
-    hdr.send_time = Date.now() / 1000;
+    hdr.send_time = now_seconds();
     hdr.src_host_id = this.host_id;
     hdr.src_mod_id = this.module_id;
     hdr.dest_host_id = dest_host_id;
@@ -235,7 +241,7 @@ export class RTMAClient {
     const hdr = CORE.MDF.RTMA_MSG_HEADER();
     hdr.msg_type = msg_type;
     hdr.msg_count = this.msg_count;
-    hdr.send_time = Date.now() / 1000;
+    hdr.send_time = now_seconds();
     hdr.src_host_id = this.host_id;
     hdr.src_mod_id = this.module_id;
     hdr.dest_host_id = dest_host_id;
@@ -318,7 +324,7 @@ export class RTMAClient {
 
   log_critical(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_CRITICAL();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = 50;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -330,7 +336,7 @@ export class RTMAClient {
 
   log_error(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_ERROR();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = 40;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -342,7 +348,7 @@ export class RTMAClient {
 
   log_warning(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_WARNING();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = 30;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -354,7 +360,7 @@ export class RTMAClient {
 
   log_info(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_INFO();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = 20;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -366,7 +372,7 @@ export class RTMAClient {
 
   log_debug(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_DEBUG();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = 10;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -378,7 +384,7 @@ export class RTMAClient {
 
   log(msg_text, level = 0) {
     const msg = CORE.MDF.RTMA_LOG();
-    msg.time = Date.now()/1000;
+    msg.time = now_seconds();
     msg.level = level;
     msg.name = this.name || this.module_id.toString();
     msg.message = msg_text;
@@ -420,7 +426,7 @@ export class RTMAClient {
 
     this.ws.onmessage = (event) => {
       // Get a timestamp
-      const now = performance.now() / 1000.0; // seconds
+      const now = now_seconds();
 
       if (event.data === "PONG") {
         return;
