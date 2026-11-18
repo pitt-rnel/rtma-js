@@ -134,3 +134,5 @@ A page then connects with `new RTMAClient("wss://lab-pc/rtma", 443, 0, 0, "my_we
 ## Running the tests
 
 `npm test` needs Node 22 or later. The end-to-end test also needs Python with pyrtma installed, and is skipped without it. Set `PYTHON` to choose the Python, and `RTMA_MM` to test against another message manager, with `{port}` for its port, for example `RTMA_MM="MessageManager :{port}"`. The `wss://` test also makes a throwaway certificate with OpenSSL 1.1.1 or later, and is skipped without it. Set `OPENSSL` if `openssl` isn't on the path; Git for Windows includes one.
+
+GitHub Actions runs `npm test` on Linux, with Node 22 and 24, for each push and pull request. pyrtma isn't installed there, so the end-to-end tests are skipped. Run them locally, with the pyrtma version that rtma-js is released with.
