@@ -206,6 +206,34 @@ function to_json(value) {
 // includes the terminating null.
 const MAX_NAME_CHARS = 31;
 
+// The websocket URL for a server and port. The server is a host name or
+// address, which gets ws://, or a ws:// or wss:// URL, which may have a path
+// for a reverse proxy. The port fills in a URL that doesn't give one.
+function websocket_url(server, port) {
+  const text = server.includes("://") ? server : `ws://${server}`;
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new RangeError(`rtma.js: server "${server}" isn't a host or URL`);
+  }
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    throw new RangeError(
+      `rtma.js: server "${server}" must use ws:// or wss://`
+    );
+  }
+  if (text.includes("#")) {
+    throw new RangeError(`rtma.js: server "${server}" can't have a #fragment`);
+  }
+  // URL drops a default port, such as 443 for wss://, so look for a port in
+  // the text itself. IPv6 addresses are in brackets, so a port follows "]".
+  const authority = text.split("://")[1].split(/[/?#]/)[0];
+  if (!/:\d+$/.test(authority)) {
+    url.port = String(port);
+  }
+  return url.href;
+}
+
 // Thrown when a method that sends needs the client to be connected, and it
 // isn't: before on_connect, or after it disconnects.
 export class NotConnectedError extends Error {
@@ -230,6 +258,7 @@ export class RTMAClient {
     }
     this.server = server;
     this.port = port;
+    this.url = websocket_url(server, port);
     this.ready = false;
     this.error = false;
     this.connected = false;
@@ -559,7 +588,7 @@ export class RTMAClient {
     // Each websocket gets a new proxy client, which has no subscriptions.
     this.subscribed_types.clear();
     this.paused_types.clear();
-    this.ws = new WebSocket(`ws://${this.server}:${this.port}`);
+    this.ws = new WebSocket(this.url);
     const self = this;
 
     this.ws.onopen = (event) => {
