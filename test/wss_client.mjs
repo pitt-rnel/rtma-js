@@ -19,12 +19,8 @@ const finish = () => {
   process.exit(0);
 };
 
-client.on_error = (e) => {
+client.on_error = (e) =>
   result.errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
-  // When the connection fails, Node 22's WebSocket fires error but never
-  // close, so on_disconnect doesn't come.
-  if (!client.connected) setTimeout(finish, 100);
-};
 client.on_connect = () => {
   result.connected = true;
   result.module_id = client.module_id;
