@@ -2,7 +2,9 @@
 //
 // Starts a message manager, the web manager and a Python peer (peer.py),
 // then checks that RTMAClient connects, subscribes, and sends and receives
-// messages. Skipped when pyrtma can't be imported.
+// messages. A second test checks the error a client gets when the web
+// manager can't reach a message manager. Skipped when pyrtma can't be
+// imported.
 //
 // Environment:
 //   PYTHON   Python with pyrtma installed. Defaults to python3, or python on
@@ -15,7 +17,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
-import { RTMAClient } from "../src/rtma.js";
+import { RTMAClient, NotConnectedError } from "../src/rtma.js";
 import { RTMA } from "../example/msg_defs/test_defs.js";
 
 const PYTHON =
@@ -100,6 +102,26 @@ function start_manager(port) {
   return start("message manager", PYTHON, ["-m", "pyrtma.manager", "-p", port]);
 }
 
+async function start_web_manager(mm_port) {
+  const ws_port = await free_port();
+  start("web manager", PYTHON, [
+    "-m",
+    "pyrtma.web_manager",
+    "-m",
+    `127.0.0.1:${mm_port}`,
+    "-p",
+    String(ws_port),
+    "-d",
+    DEFS,
+  ]);
+  await wait_for_port(ws_port);
+  return ws_port;
+}
+
+function same_set(actual, expected, what) {
+  assert.deepEqual(new Set(actual), new Set(expected), what);
+}
+
 test(
   "RTMAClient through the web manager",
   { skip, timeout: 60000 },
@@ -107,19 +129,7 @@ test(
     const mm_port = await free_port();
     start_manager(String(mm_port));
     await wait_for_port(mm_port);
-
-    const ws_port = await free_port();
-    start("web manager", PYTHON, [
-      "-m",
-      "pyrtma.web_manager",
-      "-m",
-      `127.0.0.1:${mm_port}`,
-      "-p",
-      String(ws_port),
-      "-d",
-      DEFS,
-    ]);
-    await wait_for_port(ws_port);
+    const ws_port = await start_web_manager(mm_port);
 
     const peer = start("peer", PYTHON, [PEER, `127.0.0.1:${mm_port}`, DEFS]);
     await wait_for(
@@ -133,9 +143,17 @@ test(
     const peer_done = new Promise((res) => peer.on("exit", res));
 
     const client = new RTMAClient("127.0.0.1", ws_port, 0, 0, NAME);
+    assert.throws(
+      () => client.send_message(RTMA.MT.TEST_PING, { serial_no: 1 }),
+      NotConnectedError
+    );
     const errors = [];
-    client.on_error = (e) =>
+    let error_received;
+    const got_error = new Promise((res) => (error_received = res));
+    client.on_error = (e) => {
       errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
+      error_received();
+    };
 
     const connected = new Promise((res) => (client.on_connect = res));
     // Every message received, and the waits for ones not yet received.
@@ -150,7 +168,7 @@ test(
       if (found) return Promise.resolve(found);
       return wait_for(new Promise((res) => waiting.push({ check, res })), what);
     };
-    // The client also gets the TEST_DOUBLE it sends. These check the source.
+    // The client also gets what it sends to everyone. These check the source.
     const from_peer = (type, check) => (m) =>
       m.header.msg_type === type &&
       m.header.src_mod_id !== client.module_id &&
@@ -171,54 +189,78 @@ test(
     });
     assert.ok(client.module_id >= 10000, `module ID ${client.module_id}`);
 
-    const types = [RTMA.MT.TEST_PING, RTMA.MT.TEST_DOUBLE];
+    const { TEST_PING, TEST_DOUBLE, TEST_SIGNAL } = RTMA.MT;
+    const types = [TEST_PING, TEST_DOUBLE, TEST_SIGNAL];
     client.subscribe(types);
-    assert.deepEqual([...client.subscribed_types], types);
+    same_set(client.subscribed_types, types);
     client.send_module_ready();
+    client.log_info("log from js");
 
     // NaN has no JSON form, so this checks that it gets to Python and back.
     const double = { x: NaN, v: [NaN, -1.5, 2.5], label: "NaN Infinity" };
-    client.send_message(RTMA.MT.TEST_DOUBLE, double);
+    client.send_message(TEST_DOUBLE, double);
 
     send_status("subscribed");
 
     const echo = await wait_message(
       "TEST_DOUBLE from the peer",
-      from_peer(RTMA.MT.TEST_DOUBLE, (d) => d.label === double.label)
+      from_peer(TEST_DOUBLE, (d) => d.label === double.label)
     );
     assert.deepStrictEqual(echo.data, double);
     const ping_42 = await wait_message("TEST_PING 42", ping(42));
+    const peer_id = ping_42.header.src_mod_id;
+
+    // A signal sent to the peer alone. The peer answers with TEST_PING 45,
+    // so if the client's own copy came back, it would come first.
+    client.send_signal(TEST_SIGNAL, peer_id);
+    await wait_message("TEST_PING 45", ping(45));
+    assert.equal(
+      received.find((m) => m.header.msg_type === TEST_SIGNAL),
+      undefined
+    );
+
+    // The web manager has no definition for this type.
+    client.send_message(4999, {});
+    await wait_for(got_error, "the error for an undefined type");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /4999/);
 
     // The peer sends TEST_PING 43 and then the marker, so if the pause
     // didn't hold, 43 arrives before the marker.
-    client.pause_subscription([RTMA.MT.TEST_PING]);
-    assert.deepEqual([...client.subscribed_types], [RTMA.MT.TEST_DOUBLE]);
-    assert.deepEqual([...client.paused_types], [RTMA.MT.TEST_PING]);
+    client.pause_subscription([TEST_PING]);
+    same_set(client.subscribed_types, [TEST_DOUBLE, TEST_SIGNAL]);
+    same_set(client.paused_types, [TEST_PING]);
     send_status("paused");
     await wait_message(
       "the peer's marker",
-      from_peer(RTMA.MT.TEST_DOUBLE, (d) => d.label === "marker")
+      from_peer(TEST_DOUBLE, (d) => d.label === "marker")
     );
     assert.equal(received.find(ping(43)), undefined);
 
-    client.resume_subscription([RTMA.MT.TEST_PING]);
-    assert.deepEqual(
-      new Set(client.subscribed_types),
-      new Set([RTMA.MT.TEST_PING, RTMA.MT.TEST_DOUBLE])
-    );
-    assert.deepEqual([...client.paused_types], []);
+    client.resume_subscription([TEST_PING]);
+    same_set(client.subscribed_types, types);
+    same_set(client.paused_types, []);
     send_status("resumed");
     await wait_message("TEST_PING 44", ping(44));
 
     await wait_for(peer_done, "the peer to finish");
     const seen = JSON.parse(peer.output.trim().split("\n").pop());
-    assert.equal(ping_42.header.src_mod_id, seen.peer_mod_id);
+    assert.equal(peer_id, seen.peer_mod_id);
     assert.equal(seen.status_src, client.module_id);
     assert.equal(seen.status_bytes, 1028);
     assert.equal(seen.status_msg, "subscribed");
     assert.equal(seen.hello_name, NAME);
     assert.deepEqual(seen.double, ["nan", ["nan", "-1.5", "2.5"]]);
     assert.equal(seen.double_label, "NaN Infinity");
+    assert.deepEqual(seen.signal, {
+      src: client.module_id,
+      dest: peer_id,
+      bytes: 0,
+    });
+    assert.deepEqual(
+      seen.logs.filter((log) => log[0] === client.module_id),
+      [[client.module_id, NAME, "log from js", 20]]
+    );
     // HELLOs for the client's CONNECT_V2, MODULE_READY and the peer's
     // INTRODUCE, each with the web manager's process ID, not Node's.
     const pids = seen.hello_pids[client.module_id];
@@ -226,14 +268,50 @@ test(
     assert.equal(new Set(pids).size, 1, `HELLO pids ${pids}`);
     assert.notEqual(pids[0], process.pid);
 
-    client.unsubscribe(types);
-    assert.deepEqual([...client.subscribed_types], []);
+    client.pause_all_subscriptions();
+    same_set(client.subscribed_types, []);
+    same_set(client.paused_types, types);
+    client.resume_all_subscriptions();
+    same_set(client.subscribed_types, types);
+    same_set(client.paused_types, []);
+    client.pause_subscription([TEST_PING]);
+    client.unsubscribe_from_all();
+    same_set(client.subscribed_types, []);
+    same_set(client.paused_types, []);
 
     const closed = new Promise((res) => (client.on_disconnect = res));
     client.disconnect();
     await wait_for(closed, "the websocket to close");
     assert.equal(client.keepalive_timer, null);
     assert.equal(close_info, "code 1000, wasClean true");
-    assert.deepEqual(errors, [], `websocket close: ${close_info}`);
+    assert.equal(errors.length, 1, `websocket close: ${close_info}`);
+    assert.throws(() => client.subscribe([TEST_PING]), NotConnectedError);
+  }
+);
+
+test(
+  "RTMAClient when the web manager can't reach a message manager",
+  { skip, timeout: 30000 },
+  async () => {
+    // Nothing listens on a port that was just free.
+    const ws_port = await start_web_manager(await free_port());
+    const client = new RTMAClient("127.0.0.1", ws_port, 0, 0, NAME);
+    const errors = [];
+    let connected = false;
+    client.on_connect = () => (connected = true);
+    client.on_error = (e) =>
+      errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
+    let close_info = "none";
+    const closed = new Promise((res) => (client.on_disconnect = res));
+    client.connect();
+    client.ws.addEventListener("close", (e) => {
+      close_info = `code ${e.code}, wasClean ${e.wasClean}`;
+    });
+
+    await wait_for(closed, "the websocket to close");
+    assert.equal(connected, false);
+    assert.equal(errors.length, 1, `errors ${errors}`);
+    assert.match(errors[0], /No message manager/);
+    assert.equal(close_info, "code 1000, wasClean true");
   }
 );

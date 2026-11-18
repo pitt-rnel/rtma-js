@@ -3,7 +3,8 @@
 Usage: python peer.py MM_IP:PORT DEFS.py
 
 Prints READY once it is subscribed. It sends the JS client's TEST_DOUBLE
-back, and answers each of the JS client's STATUS messages:
+back, answers TEST_SIGNAL with TEST_PING 45, records RTMA_LOG_INFO
+messages, and answers each of the JS client's STATUS messages:
 
 - "subscribed": TEST_PING 42, and a request for introductions.
 - "paused": TEST_PING 43, then a TEST_DOUBLE labelled "marker".
@@ -28,7 +29,10 @@ client.connect(mm_ip)
 MT_STATUS = client.message_id_from_name("STATUS")
 MT_TEST_PING = client.message_id_from_name("TEST_PING")
 MT_TEST_DOUBLE = client.message_id_from_name("TEST_DOUBLE")
-client.subscribe([MT_STATUS, MT_TEST_DOUBLE, cd.MT_HELLO])
+MT_TEST_SIGNAL = client.message_id_from_name("TEST_SIGNAL")
+client.subscribe(
+    [MT_STATUS, MT_TEST_DOUBLE, MT_TEST_SIGNAL, cd.MT_HELLO, cd.MT_RTMA_LOG_INFO]
+)
 print("READY", flush=True)
 
 
@@ -38,7 +42,7 @@ def send_ping(serial_no: int) -> None:
     client.send_message(ping)
 
 
-result: dict = {"hello_pids": {}}
+result: dict = {"hello_pids": {}, "logs": []}
 deadline = time.perf_counter() + 15
 while time.perf_counter() < deadline and not (
     "resumed" in result and "hello_name" in result
@@ -50,6 +54,18 @@ while time.perf_counter() < deadline and not (
         result["hello_pids"].setdefault(str(msg.data.mod_id), []).append(msg.data.pid)
         if msg.data.mod_id == result.get("status_src"):
             result["hello_name"] = msg.data.name
+    elif msg.type_id == cd.MT_RTMA_LOG_INFO:
+        data = msg.data
+        result["logs"].append(
+            [msg.header.src_mod_id, data.name, data.message, data.level]
+        )
+    elif msg.type_id == MT_TEST_SIGNAL:
+        result["signal"] = {
+            "src": msg.header.src_mod_id,
+            "dest": msg.header.dest_mod_id,
+            "bytes": msg.header.num_data_bytes,
+        }
+        send_ping(45)
     elif msg.type_id == MT_TEST_DOUBLE and "double" not in result:
         # repr(), because JSON has no NaN
         result["double"] = [repr(msg.data.x), [repr(v) for v in msg.data.v]]
