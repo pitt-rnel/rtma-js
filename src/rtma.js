@@ -206,6 +206,15 @@ function to_json(value) {
 // includes the terminating null.
 const MAX_NAME_CHARS = 31;
 
+// Thrown when a method that sends needs the client to be connected, and it
+// isn't: before on_connect, or after it disconnects.
+export class NotConnectedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "NotConnectedError";
+  }
+}
+
 export class RTMAClient {
   constructor(
     server = "127.0.0.1",
@@ -282,7 +291,27 @@ export class RTMAClient {
     }
   }
 
+  _require_connection(what) {
+    if (!this.connected) {
+      throw new NotConnectedError(
+        `rtma.js: ${what} needs a connection; call connect() and wait for on_connect`
+      );
+    }
+  }
+
   send_message(msg_type, msg_data, dest_mod_id = 0, dest_host_id = 0) {
+    this._require_connection("send_message()");
+    this._send_message(msg_type, msg_data, dest_mod_id, dest_host_id);
+  }
+
+  send_signal(msg_type, dest_mod_id = 0, dest_host_id = 0) {
+    this._require_connection("send_signal()");
+    this._send_signal(msg_type, dest_mod_id, dest_host_id);
+  }
+
+  // Like send_message() and send_signal(), but without the check, for the
+  // messages that connect and disconnect.
+  _send_message(msg_type, msg_data, dest_mod_id = 0, dest_host_id = 0) {
     const hdr = CORE.MDF.RTMA_MSG_HEADER();
     hdr.msg_type = msg_type;
     hdr.msg_count = this.msg_count;
@@ -302,7 +331,7 @@ export class RTMAClient {
     this.msg_count++;
   }
 
-  send_signal(msg_type, dest_mod_id = 0, dest_host_id = 0) {
+  _send_signal(msg_type, dest_mod_id = 0, dest_host_id = 0) {
     const hdr = CORE.MDF.RTMA_MSG_HEADER();
     hdr.msg_type = msg_type;
     hdr.msg_count = this.msg_count;
@@ -325,13 +354,13 @@ export class RTMAClient {
     msg.logger_status = 0;
     msg.mod_id = this.module_id;
     msg.name = this.name;
-    this.send_message(CORE.MT.CONNECT_V2, msg);
+    this._send_message(CORE.MT.CONNECT_V2, msg);
     this.connect_ack = true;
   }
 
   disconnect() {
     if (this.ws && this.ws.readyState < this.ws.CLOSED && this.connected) {
-      this.send_signal(CORE.MT.DISCONNECT);
+      this._send_signal(CORE.MT.DISCONNECT);
       if (this.ws.readyState < this.ws.CLOSING) {
         this.ws.close();
       }
@@ -341,6 +370,7 @@ export class RTMAClient {
   }
 
   subscribe(msg_types) {
+    this._require_connection("subscribe()");
     msg_types.forEach((msg_type) => {
       const msg = CORE.MDF.SUBSCRIBE();
       msg.msg_type = msg_type;
@@ -352,6 +382,7 @@ export class RTMAClient {
   }
 
   unsubscribe(msg_types) {
+    this._require_connection("unsubscribe()");
     msg_types.forEach((msg_type) => {
       const msg = CORE.MDF.UNSUBSCRIBE();
       msg.msg_type = msg_type;
@@ -364,6 +395,7 @@ export class RTMAClient {
 
   // The message manager stops sending the types until they are resumed.
   pause_subscription(msg_types) {
+    this._require_connection("pause_subscription()");
     msg_types.forEach((msg_type) => {
       const msg = CORE.MDF.PAUSE_SUBSCRIPTION();
       msg.msg_type = msg_type;
@@ -375,6 +407,7 @@ export class RTMAClient {
   }
 
   resume_subscription(msg_types) {
+    this._require_connection("resume_subscription()");
     msg_types.forEach((msg_type) => {
       const msg = CORE.MDF.RESUME_SUBSCRIPTION();
       msg.msg_type = msg_type;
@@ -388,19 +421,23 @@ export class RTMAClient {
   // Unsubscribes from every subscribed type, and forgets the paused ones,
   // which have no subscription to end.
   unsubscribe_from_all() {
+    this._require_connection("unsubscribe_from_all()");
     this.unsubscribe([...this.subscribed_types]);
     this.paused_types.clear();
   }
 
   pause_all_subscriptions() {
+    this._require_connection("pause_all_subscriptions()");
     this.pause_subscription([...this.subscribed_types]);
   }
 
   resume_all_subscriptions() {
+    this._require_connection("resume_all_subscriptions()");
     this.resume_subscription([...this.paused_types]);
   }
 
   send_module_ready() {
+    this._require_connection("send_module_ready()");
     // A browser has no process ID, so it sends 0. The web manager sends its
     // own process ID to the message manager in place of either.
     const msg = CORE.MDF.MODULE_READY();
@@ -435,6 +472,14 @@ export class RTMAClient {
     }
   }
 
+  // Log messages go to the console always, and to the message manager while
+  // connected, as with pyrtma's client logger.
+  _send_log(msg_type, msg) {
+    if (this.connected) {
+      this.send_message(msg_type, msg);
+    }
+  }
+
   log_critical(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_CRITICAL();
     msg.time = now_seconds();
@@ -444,7 +489,7 @@ export class RTMAClient {
     
     console.error("CRITICAL: " + msg_text);
 
-    this.send_message(CORE.MT.RTMA_LOG_CRITICAL, msg);
+    this._send_log(CORE.MT.RTMA_LOG_CRITICAL, msg);
   }
 
   log_error(msg_text) {
@@ -456,7 +501,7 @@ export class RTMAClient {
     
     console.error("ERROR: " + msg_text);
 
-    this.send_message(CORE.MT.RTMA_LOG_ERROR, msg);
+    this._send_log(CORE.MT.RTMA_LOG_ERROR, msg);
   }
 
   log_warning(msg_text) {
@@ -468,7 +513,7 @@ export class RTMAClient {
     
     console.warn("WARNING: " + msg_text);
 
-    this.send_message(CORE.MT.RTMA_LOG_WARNING, msg);
+    this._send_log(CORE.MT.RTMA_LOG_WARNING, msg);
   }
 
   log_info(msg_text) {
@@ -480,7 +525,7 @@ export class RTMAClient {
     
     console.log("INFO: " + msg_text);
 
-    this.send_message(CORE.MT.RTMA_LOG_INFO, msg);
+    this._send_log(CORE.MT.RTMA_LOG_INFO, msg);
   }
 
   log_debug(msg_text) {
@@ -492,7 +537,7 @@ export class RTMAClient {
     
     console.debug("DEBUG: " + msg_text);
 
-    this.send_message(CORE.MT.RTMA_LOG_DEBUG, msg);
+    this._send_log(CORE.MT.RTMA_LOG_DEBUG, msg);
   }
 
   log(msg_text, level = 0) {
@@ -507,7 +552,7 @@ export class RTMAClient {
     else if (level < 40) { console.warn("LOG: " + msg_text); }
     else { console.error("LOG: " + msg_text); }
 
-    this.send_message(CORE.MT.RTMA_LOG, msg);
+    this._send_log(CORE.MT.RTMA_LOG, msg);
   }
 
   connect() {

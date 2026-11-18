@@ -1,1 +1,1 @@
-export { RTMAClient } from "./src/rtma.js";
+export { RTMAClient, NotConnectedError } from "./src/rtma.js";
