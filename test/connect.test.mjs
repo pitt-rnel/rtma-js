@@ -82,3 +82,22 @@ for (const [name, order] of Object.entries(ORDERS)) {
     }
   });
 }
+
+test("CONNECT_V2 carries Node's process ID and the module name", () => {
+  const real = globalThis.WebSocket;
+  globalThis.WebSocket = FakeWebSocket;
+  try {
+    const client = new RTMAClient("127.0.0.1", 5678, 0, 0, "pid_test");
+    watch(client);
+    client.connect();
+    FakeWebSocket.instance.fire("open");
+    const connect = JSON.parse(FakeWebSocket.instance.sent[0]);
+    FakeWebSocket.instance.fire("close");
+
+    assert.equal(connect.header.msg_type, 4);
+    assert.equal(connect.data.pid, process.pid);
+    assert.equal(connect.data.name, "pid_test");
+  } finally {
+    globalThis.WebSocket = real;
+  }
+});

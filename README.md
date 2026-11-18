@@ -82,7 +82,7 @@ To install rtma-js as a npm package into your react project:
  }      
 ```
 
-`pause_subscription()` and `resume_subscription()` take an array of message types, like `subscribe()`. While a type is paused, the message manager doesn't send it, and the client lists it in `paused_types` instead of `subscribed_types`. `unsubscribe_from_all()`, `pause_all_subscriptions()` and `resume_all_subscriptions()` act on every subscribed or paused type. `send_module_ready()` sends MODULE_READY. The web manager replaces the process ID in it with its own, since it holds the connection to the message manager.
+`pause_subscription()` and `resume_subscription()` take an array of message types, like `subscribe()`. While a type is paused, the message manager doesn't send it, and the client lists it in `paused_types` instead of `subscribed_types`. `unsubscribe_from_all()`, `pause_all_subscriptions()` and `resume_all_subscriptions()` act on every subscribed or paused type. `send_module_ready()` sends MODULE_READY. The client puts Node's process ID, or 0 in a browser, in its CONNECT_V2 and MODULE_READY messages. The web manager replaces it with its own, since it holds the connection to the message manager.
 
 The methods that send throw a `NotConnectedError`, exported with `RTMAClient`, when the client isn't connected: before `on_connect`, or after it disconnects. The `log_*` methods are the exception: they always write to the console, and send only while connected.
 

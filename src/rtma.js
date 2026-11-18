@@ -234,6 +234,13 @@ function websocket_url(server, port) {
   return url.href;
 }
 
+// This process's ID, for CONNECT_V2 and MODULE_READY: Node's, or 0 in a
+// browser, which has none. The web manager sends its own process ID to the
+// message manager in place of this one.
+function local_pid() {
+  return globalThis.process?.pid ?? 0;
+}
+
 // Thrown when a method that sends needs the client to be connected, and it
 // isn't: before on_connect, or after it disconnects.
 export class NotConnectedError extends Error {
@@ -382,6 +389,7 @@ export class RTMAClient {
     const msg = CORE.MDF.CONNECT_V2();
     msg.logger_status = 0;
     msg.mod_id = this.module_id;
+    msg.pid = local_pid();
     msg.name = this.name;
     this._send_message(CORE.MT.CONNECT_V2, msg);
     this.connect_ack = true;
@@ -467,10 +475,8 @@ export class RTMAClient {
 
   send_module_ready() {
     this._require_connection("send_module_ready()");
-    // A browser has no process ID, so it sends 0. The web manager sends its
-    // own process ID to the message manager in place of either.
     const msg = CORE.MDF.MODULE_READY();
-    msg.pid = globalThis.process?.pid ?? 0;
+    msg.pid = local_pid();
     this.send_message(CORE.MT.MODULE_READY, msg);
   }
 
