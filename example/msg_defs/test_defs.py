@@ -135,6 +135,7 @@ MT_TEST_PING: int = 1000
 MT_RASTER: int = 1001
 MT_STATUS: int = 1002
 MT_TEST_DOUBLE: int = 1003
+MT_TEST_SIGNAL: int = 1004
 
 
 # Struct Definitions
@@ -945,6 +946,15 @@ class MDF_TEST_DOUBLE(MessageData, metaclass=MessageMeta):
     x: Double = Double()
     v: FloatArray[Double] = FloatArray(Double, 3)
     label: String = String(16)
+
+
+class MDF_TEST_SIGNAL(MessageData, metaclass=MessageMeta):
+    type_id: ClassVar[int] = 1004
+    type_name: ClassVar[str] = "TEST_SIGNAL"
+    type_hash: ClassVar[int] = 0xFFBB2061
+    type_size: ClassVar[int] = 0
+    type_source: ClassVar[str] = "test_defs"
+    type_def: ClassVar[str] = "TEST_SIGNAL:\n  id: 1004\n  fields: null"
 
 
 # User Context

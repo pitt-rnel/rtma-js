@@ -149,6 +149,7 @@ RTMA.MT.TEST_PING = 1000;
 RTMA.MT.RASTER = 1001;
 RTMA.MT.STATUS = 1002;
 RTMA.MT.TEST_DOUBLE = 1003;
+RTMA.MT.TEST_SIGNAL = 1004;
 
 // Struct Definitions
 RTMA.SDF = {};
@@ -557,6 +558,8 @@ RTMA.MDF.TEST_DOUBLE = () => {
   }
 };
 
+RTMA.MDF.TEST_SIGNAL = () => { return {} };
+
 // Message Definition Hashes
 RTMA.HASH = {};
 
@@ -617,3 +620,4 @@ RTMA.HASH.TEST_PING = "1e2c687c";
 RTMA.HASH.RASTER = "3e9f038a";
 RTMA.HASH.STATUS = "b54a4068";
 RTMA.HASH.TEST_DOUBLE = "ca5dbb9c";
+RTMA.HASH.TEST_SIGNAL = "ffbb2061";

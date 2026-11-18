@@ -34,3 +34,7 @@ message_defs:
       x: double
       v: double[3]
       label: char[16]
+
+  TEST_SIGNAL:
+    id: 1004
+    fields: null
