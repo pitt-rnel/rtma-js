@@ -9,12 +9,15 @@ const CORE = {
     DISCONNECT: 14,
     SUBSCRIBE: 15,
     UNSUBSCRIBE: 16,
+    MODULE_READY: 26,
     RTMA_LOG: 40,
     RTMA_LOG_CRITICAL: 41,
     RTMA_LOG_ERROR: 42,
     RTMA_LOG_WARNING: 43,
     RTMA_LOG_INFO: 44,
     RTMA_LOG_DEBUG: 45,
+    PAUSE_SUBSCRIPTION: 85,
+    RESUME_SUBSCRIPTION: 86,
   },
 
   MDF: {
@@ -55,6 +58,24 @@ const CORE = {
     UNSUBSCRIBE: () => {
       return {
         msg_type: 0,
+      };
+    },
+
+    PAUSE_SUBSCRIPTION: () => {
+      return {
+        msg_type: 0,
+      };
+    },
+
+    RESUME_SUBSCRIPTION: () => {
+      return {
+        msg_type: 0,
+      };
+    },
+
+    MODULE_READY: () => {
+      return {
+        pid: 0,
       };
     },
 
@@ -211,6 +232,7 @@ export class RTMAClient {
     this.ws = null;
     this.connect_ack = false;
     this.subscribed_types = new Set([]);
+    this.paused_types = new Set([]);
     this.keepalive_timer = null;
 
     this.on_connect = () => {};
@@ -325,6 +347,7 @@ export class RTMAClient {
       console.log(`rtma.js: Subscribing to ${msg_type}`);
       this.send_message(CORE.MT.SUBSCRIBE, msg);
       this.subscribed_types.add(msg_type);
+      this.paused_types.delete(msg_type);
     });
   }
 
@@ -335,7 +358,39 @@ export class RTMAClient {
       console.log(`rtma.js: Unsubscribing to ${msg_type}`);
       this.send_message(CORE.MT.UNSUBSCRIBE, msg);
       this.subscribed_types.delete(msg_type);
+      this.paused_types.delete(msg_type);
     });
+  }
+
+  // The message manager stops sending the types until they are resumed.
+  pause_subscription(msg_types) {
+    msg_types.forEach((msg_type) => {
+      const msg = CORE.MDF.PAUSE_SUBSCRIPTION();
+      msg.msg_type = msg_type;
+      console.log(`rtma.js: Pausing subscription to ${msg_type}`);
+      this.send_message(CORE.MT.PAUSE_SUBSCRIPTION, msg);
+      this.subscribed_types.delete(msg_type);
+      this.paused_types.add(msg_type);
+    });
+  }
+
+  resume_subscription(msg_types) {
+    msg_types.forEach((msg_type) => {
+      const msg = CORE.MDF.RESUME_SUBSCRIPTION();
+      msg.msg_type = msg_type;
+      console.log(`rtma.js: Resuming subscription to ${msg_type}`);
+      this.send_message(CORE.MT.RESUME_SUBSCRIPTION, msg);
+      this.subscribed_types.add(msg_type);
+      this.paused_types.delete(msg_type);
+    });
+  }
+
+  send_module_ready() {
+    // A browser has no process ID, so it sends 0. The web manager sends its
+    // own process ID to the message manager in place of either.
+    const msg = CORE.MDF.MODULE_READY();
+    msg.pid = globalThis.process?.pid ?? 0;
+    this.send_message(CORE.MT.MODULE_READY, msg);
   }
 
   error_handler(msg) {
@@ -443,6 +498,7 @@ export class RTMAClient {
   connect() {
     // Each websocket gets a new proxy client, which has no subscriptions.
     this.subscribed_types.clear();
+    this.paused_types.clear();
     this.ws = new WebSocket(`ws://${this.server}:${this.port}`);
     const self = this;
 
