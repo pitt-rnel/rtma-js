@@ -86,6 +86,23 @@ To install rtma-js as a npm package into your react project:
 
 The methods that send throw a `NotConnectedError`, exported with `RTMAClient`, when the client isn't connected: before `on_connect`, or after it disconnects. The `log_*` methods are the exception: they always write to the console, and send only while connected.
 
+## Secure websockets
+
+The `server` argument can be a host name or address, which connects with `ws://`, or a `ws://` or `wss://` URL, which can include a path. The `port` argument fills in the port unless the URL gives one. Pages loaded over https need `wss://`, since browsers block `ws://` from them.
+
+The pyrtma web manager doesn't serve `wss://` itself, and the `key` and `cert` arguments of its `WebMessageManager` class don't work yet. Use a reverse proxy that handles TLS and passes plain websocket traffic to the web manager. With nginx, for example:
+
+```nginx
+location /rtma {
+    proxy_pass http://127.0.0.1:5678;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+A page then connects with `new RTMAClient("wss://lab-pc/rtma", 443, 0, 0, "my_web_app")`. The browser must trust the proxy's certificate. For a self-signed certificate, opening the proxy's address in the browser once lets the user accept it.
+
 ## Running the tests
 
 `npm test` needs Node 22 or later. The end-to-end test also needs Python with pyrtma installed, and is skipped without it. Set `PYTHON` to choose the Python, and `RTMA_MM` to test against another message manager, with `{port}` for its port, for example `RTMA_MM="MessageManager :{port}"`.
