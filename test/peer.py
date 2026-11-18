@@ -3,9 +3,14 @@
 Usage: python peer.py MM_IP:PORT DEFS.py
 
 Prints READY once it is subscribed. It sends the JS client's TEST_DOUBLE
-back. When the JS client's STATUS arrives, it replies with TEST_PING, asks
-the message manager for introductions, and prints what it saw as one line
-of JSON.
+back, and answers each of the JS client's STATUS messages:
+
+- "subscribed": TEST_PING 42, and a request for introductions.
+- "paused": TEST_PING 43, then a TEST_DOUBLE labelled "marker".
+- "resumed": TEST_PING 44.
+
+After "resumed" it prints what it saw as one line of JSON, including the
+process ID in each HELLO, by module ID.
 """
 
 import json
@@ -26,28 +31,45 @@ MT_TEST_DOUBLE = client.message_id_from_name("TEST_DOUBLE")
 client.subscribe([MT_STATUS, MT_TEST_DOUBLE, cd.MT_HELLO])
 print("READY", flush=True)
 
-result = {}
-deadline = time.perf_counter() + 10
-while time.perf_counter() < deadline and "hello_name" not in result:
+
+def send_ping(serial_no: int) -> None:
+    ping = client.get_msg_cls(MT_TEST_PING)()
+    ping.serial_no = serial_no
+    client.send_message(ping)
+
+
+result: dict = {"hello_pids": {}}
+deadline = time.perf_counter() + 15
+while time.perf_counter() < deadline and not (
+    "resumed" in result and "hello_name" in result
+):
     msg = client.read_message(timeout=0.2)
     if msg is None:
         continue
-    if msg.type_id == MT_TEST_DOUBLE and "double" not in result:
+    if msg.type_id == cd.MT_HELLO:
+        result["hello_pids"].setdefault(str(msg.data.mod_id), []).append(msg.data.pid)
+        if msg.data.mod_id == result.get("status_src"):
+            result["hello_name"] = msg.data.name
+    elif msg.type_id == MT_TEST_DOUBLE and "double" not in result:
         # repr(), because JSON has no NaN
         result["double"] = [repr(msg.data.x), [repr(v) for v in msg.data.v]]
         result["double_label"] = msg.data.label
         client.send_message(msg.data)
-    elif msg.type_id == MT_STATUS and "status_src" not in result:
+    elif msg.type_id == MT_STATUS and msg.data.msg == "subscribed":
         result["status_src"] = msg.header.src_mod_id
         result["status_bytes"] = msg.header.num_data_bytes
         result["status_msg"] = msg.data.msg
-        ping = client.get_msg_cls(MT_TEST_PING)()
-        ping.serial_no = 42
-        client.send_message(ping)
+        send_ping(42)
         result["peer_mod_id"] = client.module_id
         client.send_signal(cd.MT_INTRODUCE)
-    elif msg.type_id == cd.MT_HELLO and msg.data.mod_id == result.get("status_src"):
-        result["hello_name"] = msg.data.name
+    elif msg.type_id == MT_STATUS and msg.data.msg == "paused":
+        send_ping(43)
+        marker = client.get_msg_cls(MT_TEST_DOUBLE)()
+        marker.label = "marker"
+        client.send_message(marker)
+    elif msg.type_id == MT_STATUS and msg.data.msg == "resumed":
+        send_ping(44)
+        result["resumed"] = True
 
 client.disconnect()
 print(json.dumps(result), flush=True)

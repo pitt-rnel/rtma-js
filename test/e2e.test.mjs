@@ -138,19 +138,30 @@ test(
       errors.push(e.rtma_msg_error ?? (e.message || e.error?.message || e.type));
 
     const connected = new Promise((res) => (client.on_connect = res));
-    let ping_received, double_received;
-    const got_ping = new Promise((res) => (ping_received = res));
-    const got_double = new Promise((res) => (double_received = res));
+    // Every message received, and the waits for ones not yet received.
+    const received = [];
+    let waiting = [];
     client.on_message = (msg) => {
-      const type = msg.header.msg_type;
-      if (type === RTMA.MT.TEST_PING) ping_received(msg);
-      // The client also gets its own TEST_DOUBLE. Wait for the peer's.
-      if (
-        type === RTMA.MT.TEST_DOUBLE &&
-        msg.header.src_mod_id !== client.module_id
-      ) {
-        double_received(msg);
-      }
+      received.push(msg);
+      waiting = waiting.filter((w) => !(w.check(msg) && (w.res(msg), true)));
+    };
+    const wait_message = (what, check) => {
+      const found = received.find(check);
+      if (found) return Promise.resolve(found);
+      return wait_for(new Promise((res) => waiting.push({ check, res })), what);
+    };
+    // The client also gets the TEST_DOUBLE it sends. These check the source.
+    const from_peer = (type, check) => (m) =>
+      m.header.msg_type === type &&
+      m.header.src_mod_id !== client.module_id &&
+      check(m.data);
+    const ping = (serial_no) =>
+      from_peer(RTMA.MT.TEST_PING, (d) => d.serial_no === serial_no);
+    const send_status = (text) => {
+      const status = RTMA.MDF.STATUS();
+      status.msg = text;
+      status.msg_length = text.length;
+      client.send_message(RTMA.MT.STATUS, status);
     };
     client.connect();
     await wait_for(connected, "the connection ACK");
@@ -163,30 +174,57 @@ test(
     const types = [RTMA.MT.TEST_PING, RTMA.MT.TEST_DOUBLE];
     client.subscribe(types);
     assert.deepEqual([...client.subscribed_types], types);
+    client.send_module_ready();
 
     // NaN has no JSON form, so this checks that it gets to Python and back.
     const double = { x: NaN, v: [NaN, -1.5, 2.5], label: "NaN Infinity" };
     client.send_message(RTMA.MT.TEST_DOUBLE, double);
 
-    const status = RTMA.MDF.STATUS();
-    status.msg = "subscribed";
-    status.msg_length = status.msg.length;
-    client.send_message(RTMA.MT.STATUS, status);
+    send_status("subscribed");
 
-    const echo = await wait_for(got_double, "TEST_DOUBLE from the peer");
+    const echo = await wait_message(
+      "TEST_DOUBLE from the peer",
+      from_peer(RTMA.MT.TEST_DOUBLE, (d) => d.label === double.label)
+    );
     assert.deepStrictEqual(echo.data, double);
-    const ping = await wait_for(got_ping, "TEST_PING from the peer");
-    assert.equal(ping.data.serial_no, 42);
+    const ping_42 = await wait_message("TEST_PING 42", ping(42));
+
+    // The peer sends TEST_PING 43 and then the marker, so if the pause
+    // didn't hold, 43 arrives before the marker.
+    client.pause_subscription([RTMA.MT.TEST_PING]);
+    assert.deepEqual([...client.subscribed_types], [RTMA.MT.TEST_DOUBLE]);
+    assert.deepEqual([...client.paused_types], [RTMA.MT.TEST_PING]);
+    send_status("paused");
+    await wait_message(
+      "the peer's marker",
+      from_peer(RTMA.MT.TEST_DOUBLE, (d) => d.label === "marker")
+    );
+    assert.equal(received.find(ping(43)), undefined);
+
+    client.resume_subscription([RTMA.MT.TEST_PING]);
+    assert.deepEqual(
+      new Set(client.subscribed_types),
+      new Set([RTMA.MT.TEST_PING, RTMA.MT.TEST_DOUBLE])
+    );
+    assert.deepEqual([...client.paused_types], []);
+    send_status("resumed");
+    await wait_message("TEST_PING 44", ping(44));
 
     await wait_for(peer_done, "the peer to finish");
     const seen = JSON.parse(peer.output.trim().split("\n").pop());
-    assert.equal(ping.header.src_mod_id, seen.peer_mod_id);
+    assert.equal(ping_42.header.src_mod_id, seen.peer_mod_id);
     assert.equal(seen.status_src, client.module_id);
     assert.equal(seen.status_bytes, 1028);
     assert.equal(seen.status_msg, "subscribed");
     assert.equal(seen.hello_name, NAME);
     assert.deepEqual(seen.double, ["nan", ["nan", "-1.5", "2.5"]]);
     assert.equal(seen.double_label, "NaN Infinity");
+    // HELLOs for the client's CONNECT_V2, MODULE_READY and the peer's
+    // INTRODUCE, each with the web manager's process ID, not Node's.
+    const pids = seen.hello_pids[client.module_id];
+    assert.equal(pids.length, 3, `HELLO pids ${pids}`);
+    assert.equal(new Set(pids).size, 1, `HELLO pids ${pids}`);
+    assert.notEqual(pids[0], process.pid);
 
     client.unsubscribe(types);
     assert.deepEqual([...client.subscribed_types], []);
