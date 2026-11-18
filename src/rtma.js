@@ -591,14 +591,15 @@ export class RTMAClient {
     this.ws = new WebSocket(this.url);
     const self = this;
 
-    this.ws.onopen = (event) => {
-      self.ready = true;
-      self.connected = false;
-      self._start_keepalive();
-      self._connect();
-    };
-
-    this.ws.onclose = (event) => {
+    // on_disconnect is called once for each websocket. When a connection
+    // fails before it opens, Node 22's WebSocket fires error but never
+    // close, so the error handler reports the close itself, and a close
+    // that follows, as in a browser, is then ignored.
+    let opened = false;
+    let closed = false;
+    const on_close = () => {
+      if (closed) return;
+      closed = true;
       self._stop_keepalive();
       self.ready = false;
       self.connected = false;
@@ -606,10 +607,21 @@ export class RTMAClient {
       self._on_disconnect();
     };
 
+    this.ws.onopen = (event) => {
+      opened = true;
+      self.ready = true;
+      self.connected = false;
+      self._start_keepalive();
+      self._connect();
+    };
+
+    this.ws.onclose = (event) => on_close();
+
     this.ws.onerror = (event) => {
       self.ready = false;
       self.error = event;
       self.on_error(event);
+      if (!opened) on_close();
     };
 
     this.ws.onmessage = (event) => {
