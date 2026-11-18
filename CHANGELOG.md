@@ -12,6 +12,7 @@ rtma-js 4 is released with pyrtma 4 and needs the pyrtma 4 web manager. Message 
 - `send_module_ready()`, which sends MODULE_READY.
 - `NotConnectedError`, exported with `RTMAClient`.
 - NaN, Infinity and -Infinity in float and double fields, in both directions. pyrtma doesn't accept the infinities in its fields, so sending one gets an `rtma_msg_error`.
+- Type declarations in `index.d.ts`, for editors and TypeScript. The code is still plain JavaScript.
 - Tests: `npm test`, with Node 22 or later. The end-to-end tests need Python with pyrtma.
 
 ### Changed
