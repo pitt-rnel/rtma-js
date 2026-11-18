@@ -82,7 +82,7 @@ To install rtma-js as a npm package into your react project:
  }      
 ```
 
-`pause_subscription()` and `resume_subscription()` take an array of message types, like `subscribe()`. While a type is paused, the message manager doesn't send it, and the client lists it in `paused_types` instead of `subscribed_types`. `send_module_ready()` sends MODULE_READY. The web manager replaces the process ID in it with its own, since it holds the connection to the message manager.
+`pause_subscription()` and `resume_subscription()` take an array of message types, like `subscribe()`. While a type is paused, the message manager doesn't send it, and the client lists it in `paused_types` instead of `subscribed_types`. `unsubscribe_from_all()`, `pause_all_subscriptions()` and `resume_all_subscriptions()` act on every subscribed or paused type. `send_module_ready()` sends MODULE_READY. The web manager replaces the process ID in it with its own, since it holds the connection to the message manager.
 
 ## Running the tests
 

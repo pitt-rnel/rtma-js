@@ -385,6 +385,21 @@ export class RTMAClient {
     });
   }
 
+  // Unsubscribes from every subscribed type, and forgets the paused ones,
+  // which have no subscription to end.
+  unsubscribe_from_all() {
+    this.unsubscribe([...this.subscribed_types]);
+    this.paused_types.clear();
+  }
+
+  pause_all_subscriptions() {
+    this.pause_subscription([...this.subscribed_types]);
+  }
+
+  resume_all_subscriptions() {
+    this.resume_subscription([...this.paused_types]);
+  }
+
   send_module_ready() {
     // A browser has no process ID, so it sends 0. The web manager sends its
     // own process ID to the message manager in place of either.
