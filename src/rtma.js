@@ -241,8 +241,10 @@ function local_pid() {
   return globalThis.process?.pid ?? 0;
 }
 
-// Thrown when a method that sends needs the client to be connected, and it
-// isn't: before on_connect, or after it disconnects.
+/**
+ * Thrown when a method that sends needs the client to be connected, and it
+ * isn't: before on_connect, or after it disconnects.
+ */
 export class NotConnectedError extends Error {
   constructor(message) {
     super(message);
@@ -250,7 +252,57 @@ export class NotConnectedError extends Error {
   }
 }
 
+/**
+ * A message header.
+ *
+ * @typedef {object} RTMAHeader
+ * @property {number} msg_type The message type ID.
+ * @property {number} msg_count The sender's count of messages it has sent.
+ * @property {number} send_time When it was sent, in seconds on the sender's
+ *   clock. rtma-js uses seconds since the epoch, and pyrtma a clock that
+ *   other processes don't share.
+ * @property {number} recv_time When this client received it, in seconds
+ *   since the epoch.
+ * @property {number} src_host_id The sender's host ID.
+ * @property {number} src_mod_id The sender's module ID.
+ * @property {number} dest_host_id The host it was sent to, or 0 for all.
+ * @property {number} dest_mod_id The module it was sent to, or 0 for every
+ *   subscriber.
+ * @property {number} num_data_bytes The size of its data, in bytes.
+ * @property {number} remaining_bytes
+ * @property {number} is_dynamic
+ * @property {number} reserved
+ */
+
+/**
+ * A message, as on_message receives it.
+ *
+ * @typedef {object} RTMAMessage
+ * @property {RTMAHeader} header The header.
+ * @property {object | null} data The fields, named as in the message
+ *   definition, or null for a signal, a message type with no fields.
+ */
+
+/**
+ * A client of an RTMA message manager, through the pyrtma web manager.
+ *
+ * Set the on_* handlers, then call connect(). Subscribe and send from
+ * on_connect onward.
+ */
 export class RTMAClient {
+  /**
+   * @param {string} [server="127.0.0.1"] The web manager's host name or
+   *   address, which connects with ws://, or a ws:// or wss:// URL, which
+   *   may include a path.
+   * @param {number} [port=5678] The web manager's port, used unless the
+   *   server URL gives one.
+   * @param {number} [module_id=0] The module ID to request. The web manager
+   *   always assigns a dynamic ID, which is in module_id once connected.
+   * @param {number} [host_id=0] The host ID put in the messages sent.
+   * @param {string} [name=""] The module name the message manager shows:
+   *   ASCII, up to 31 characters.
+   * @throws {RangeError} The server or name isn't valid.
+   */
   constructor(
     server = "127.0.0.1",
     port = 5678,
@@ -280,6 +332,11 @@ export class RTMAClient {
     this.paused_types = new Set([]);
     this.keepalive_timer = null;
 
+    /**
+     * Called when the message manager has accepted the connection. Subscribe
+     * here.
+     * @type {() => void}
+     */
     this.on_connect = () => {};
 
     this._on_connect = (msg) => {
@@ -293,8 +350,19 @@ export class RTMAClient {
       this.on_connect();
     };
 
+    /**
+     * Called once when the websocket closes, or fails to open. Call
+     * connect() to connect again.
+     * @type {() => void}
+     */
     this.on_disconnect = () => {};
 
+    /**
+     * Called with a websocket error event, or with an object holding an
+     * rtma_msg_error string, which the web manager sends when it can't do
+     * what the client asked.
+     * @type {(error: Event | {rtma_msg_error: string}) => void}
+     */
     this.on_error = (event) => {
       console.error("rtma.js error");
     };
@@ -304,6 +372,11 @@ export class RTMAClient {
       this.on_disconnect();
     };
 
+    /**
+     * Called for each message received, including the message manager's
+     * ACK of the connection.
+     * @type {(msg: RTMAMessage) => void}
+     */
     this.on_message = (msg) => {
       console.log(`rmta.js on_message: ${JSON.stringify(msg)}`);
     };
@@ -335,11 +408,31 @@ export class RTMAClient {
     }
   }
 
+  /**
+   * Send a message.
+   *
+   * @param {number} msg_type The message type ID.
+   * @param {object} msg_data The fields, as from the definitions' MDF
+   *   function for the type.
+   * @param {number} [dest_mod_id=0] The module to send it to, or 0 for
+   *   every subscriber.
+   * @param {number} [dest_host_id=0] The host to send it to, or 0 for all.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   send_message(msg_type, msg_data, dest_mod_id = 0, dest_host_id = 0) {
     this._require_connection("send_message()");
     this._send_message(msg_type, msg_data, dest_mod_id, dest_host_id);
   }
 
+  /**
+   * Send a signal, a message type with no fields.
+   *
+   * @param {number} msg_type The message type ID.
+   * @param {number} [dest_mod_id=0] The module to send it to, or 0 for
+   *   every subscriber.
+   * @param {number} [dest_host_id=0] The host to send it to, or 0 for all.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   send_signal(msg_type, dest_mod_id = 0, dest_host_id = 0) {
     this._require_connection("send_signal()");
     this._send_signal(msg_type, dest_mod_id, dest_host_id);
@@ -395,6 +488,7 @@ export class RTMAClient {
     this.connect_ack = true;
   }
 
+  /** Disconnect from the message manager and close the websocket. */
   disconnect() {
     if (this.ws && this.ws.readyState < this.ws.CLOSED && this.connected) {
       this._send_signal(CORE.MT.DISCONNECT);
@@ -406,6 +500,12 @@ export class RTMAClient {
     this.connected = false;
   }
 
+  /**
+   * Subscribe to message types.
+   *
+   * @param {number[] | Set<number>} msg_types The message type IDs.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   subscribe(msg_types) {
     this._require_connection("subscribe()");
     msg_types.forEach((msg_type) => {
@@ -418,6 +518,12 @@ export class RTMAClient {
     });
   }
 
+  /**
+   * Unsubscribe from message types.
+   *
+   * @param {number[] | Set<number>} msg_types The message type IDs.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   unsubscribe(msg_types) {
     this._require_connection("unsubscribe()");
     msg_types.forEach((msg_type) => {
@@ -430,7 +536,13 @@ export class RTMAClient {
     });
   }
 
-  // The message manager stops sending the types until they are resumed.
+  /**
+   * Pause subscriptions: the message manager stops sending the types until
+   * they are resumed. They move from subscribed_types to paused_types.
+   *
+   * @param {number[] | Set<number>} msg_types The message type IDs.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   pause_subscription(msg_types) {
     this._require_connection("pause_subscription()");
     msg_types.forEach((msg_type) => {
@@ -443,6 +555,12 @@ export class RTMAClient {
     });
   }
 
+  /**
+   * Resume paused subscriptions.
+   *
+   * @param {number[] | Set<number>} msg_types The message type IDs.
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   resume_subscription(msg_types) {
     this._require_connection("resume_subscription()");
     msg_types.forEach((msg_type) => {
@@ -455,24 +573,43 @@ export class RTMAClient {
     });
   }
 
-  // Unsubscribes from every subscribed type, and forgets the paused ones,
-  // which have no subscription to end.
+  /**
+   * Unsubscribe from every subscribed type, and forget the paused ones,
+   * which have no subscription to end.
+   *
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   unsubscribe_from_all() {
     this._require_connection("unsubscribe_from_all()");
     this.unsubscribe([...this.subscribed_types]);
     this.paused_types.clear();
   }
 
+  /**
+   * Pause every subscription.
+   *
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   pause_all_subscriptions() {
     this._require_connection("pause_all_subscriptions()");
     this.pause_subscription([...this.subscribed_types]);
   }
 
+  /**
+   * Resume every paused subscription.
+   *
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   resume_all_subscriptions() {
     this._require_connection("resume_all_subscriptions()");
     this.resume_subscription([...this.paused_types]);
   }
 
+  /**
+   * Send MODULE_READY, which the message manager announces with a HELLO.
+   *
+   * @throws {NotConnectedError} The client isn't connected.
+   */
   send_module_ready() {
     this._require_connection("send_module_ready()");
     const msg = CORE.MDF.MODULE_READY();
@@ -515,6 +652,12 @@ export class RTMAClient {
     }
   }
 
+  /**
+   * Log a message at critical level (50): to the console, and to the
+   * message manager while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   */
   log_critical(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_CRITICAL();
     msg.time = now_seconds();
@@ -527,6 +670,12 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG_CRITICAL, msg);
   }
 
+  /**
+   * Log a message at error level (40): to the console, and to the
+   * message manager while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   */
   log_error(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_ERROR();
     msg.time = now_seconds();
@@ -539,6 +688,12 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG_ERROR, msg);
   }
 
+  /**
+   * Log a message at warning level (30): to the console, and to the
+   * message manager while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   */
   log_warning(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_WARNING();
     msg.time = now_seconds();
@@ -551,6 +706,12 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG_WARNING, msg);
   }
 
+  /**
+   * Log a message at info level (20): to the console, and to the
+   * message manager while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   */
   log_info(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_INFO();
     msg.time = now_seconds();
@@ -563,6 +724,12 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG_INFO, msg);
   }
 
+  /**
+   * Log a message at debug level (10): to the console, and to the
+   * message manager while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   */
   log_debug(msg_text) {
     const msg = CORE.MDF.RTMA_LOG_DEBUG();
     msg.time = now_seconds();
@@ -575,6 +742,13 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG_DEBUG, msg);
   }
 
+  /**
+   * Log a message at any level: to the console, and to the message manager
+   * as RTMA_LOG while connected.
+   *
+   * @param {string} msg_text The text, up to 1023 characters.
+   * @param {number} [level=0] The level, as in Python's logging module.
+   */
   log(msg_text, level = 0) {
     const msg = CORE.MDF.RTMA_LOG();
     msg.time = now_seconds();
@@ -590,6 +764,11 @@ export class RTMAClient {
     this._send_log(CORE.MT.RTMA_LOG, msg);
   }
 
+  /**
+   * Open the websocket and connect to the message manager. on_connect is
+   * called when the message manager accepts the connection, and
+   * on_disconnect if it fails.
+   */
   connect() {
     // Each websocket gets a new proxy client, which has no subscriptions.
     this.subscribed_types.clear();
