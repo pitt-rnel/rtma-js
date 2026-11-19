@@ -20,7 +20,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
@@ -45,40 +45,62 @@ const skip =
 
 // A self-signed certificate for localhost and 127.0.0.1, made for this run
 // in a temporary directory, so that no private key is kept in the
-// repository. Needs OpenSSL 1.1.1 or later, for -addext.
+// repository. openssl gets a configuration file of the test's own, since
+// some builds look for theirs where none is installed: conda's on Windows,
+// for one, looks in C:\Program Files\Common Files\ssl. Returns the paths,
+// or the reason there is no certificate.
+const CERT_CONFIG = `[req]
+distinguished_name = req_dn
+x509_extensions = v3
+prompt = no
+
+[req_dn]
+CN = localhost
+
+[v3]
+basicConstraints = critical, CA:TRUE
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always, issuer
+subjectAltName = DNS:localhost, IP:127.0.0.1
+`;
+
 function make_test_cert() {
   const dir = mkdtempSync(path.join(tmpdir(), "rtma-js-tls-"));
+  const config = path.join(dir, "openssl.cnf");
   const cert = path.join(dir, "cert.pem");
   const key = path.join(dir, "key.pem");
-  const made = spawnSync(OPENSSL, [
-    "req",
-    "-x509",
-    "-newkey",
-    "ec",
-    "-pkeyopt",
-    "ec_paramgen_curve:prime256v1",
-    "-nodes",
-    "-days",
-    "1",
-    "-subj",
-    "/CN=localhost",
-    "-addext",
-    "subjectAltName=DNS:localhost,IP:127.0.0.1",
-    "-keyout",
-    key,
-    "-out",
-    cert,
-  ]);
+  writeFileSync(config, CERT_CONFIG);
+  const made = spawnSync(
+    OPENSSL,
+    [
+      "req",
+      "-x509",
+      "-config",
+      config,
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-nodes",
+      "-days",
+      "1",
+      "-keyout",
+      key,
+      "-out",
+      cert,
+    ],
+    { encoding: "utf8" }
+  );
   if (made.status !== 0) {
     rmSync(dir, { recursive: true, force: true });
-    return null;
+    const why = made.error ? made.error.message : made.stderr.trim();
+    return { error: `no test certificate from "${OPENSSL}": ${why}` };
   }
   return { dir, cert, key };
 }
 
 const test_cert = skip ? null : make_test_cert();
-const skip_wss =
-  skip || (test_cert ? false : `no test certificate from "${OPENSSL}"`);
+const skip_wss = skip || (test_cert?.error ?? false);
 
 // Whether the web manager serves wss:// itself, with --cert and --key.
 const web_manager_help = skip
@@ -96,7 +118,7 @@ after(() => {
   for (const child of children) {
     child.kill();
   }
-  if (test_cert) rmSync(test_cert.dir, { recursive: true, force: true });
+  if (test_cert?.dir) rmSync(test_cert.dir, { recursive: true, force: true });
 });
 
 function start(label, cmd, args) {
