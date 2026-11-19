@@ -1,0 +1,53 @@
+name: Tests
+
+# The test job runs the tests that don't need pyrtma; the end-to-end tests
+# skip themselves there, since pyrtma isn't installed. The e2e job runs the
+# end-to-end tests with the pyrtma on PyPI, for information only.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      # rtma-js has no dependencies, so there is nothing to install.
+      - run: npm test
+
+  # The end-to-end tests with the released pyrtma, for information. A
+  # failure there doesn't fail the check, since the released pyrtma may be
+  # older than the one this rtma-js is released with; it shows as an error
+  # annotation on the run instead. A failed install does fail the check.
+  e2e:
+    name: End-to-end with pyrtma from PyPI (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install pyrtma
+        run: |
+          pip install pyrtma
+          python -c "import pyrtma; print('pyrtma', pyrtma.__version__)"
+      - name: End-to-end tests
+        continue-on-error: true
+        env:
+          PYTHON: python
+        run: node --test test/e2e.test.mjs
