@@ -493,7 +493,7 @@ export class RTMAClient {
     if (this.ws && this.ws.readyState < this.ws.CLOSED && this.connected) {
       this._send_signal(CORE.MT.DISCONNECT);
       if (this.ws.readyState < this.ws.CLOSING) {
-        this.ws.close();
+        this.ws.close(1000);
       }
     }
     this.ready = false;

@@ -21,6 +21,7 @@ rtma-js 4 is released with pyrtma 4 and needs the pyrtma 4 web manager. Message 
 - The methods that send throw `NotConnectedError` when the client isn't connected, which is before `on_connect` or after it disconnects. They used to fail with a `TypeError`, or reach the web manager and get an error back. The `log_*` methods still write to the console, and send only while connected.
 - `send_time` and `recv_time` are both seconds since the epoch, with sub-millisecond resolution. `recv_time` used to be seconds since the page loaded, so the two couldn't be compared.
 - The keepalive timer runs only while the websocket is open, so a Node process using the client can exit.
+- `disconnect()` closes the websocket with code 1000, a normal closure. It used to give no code, which a server may echo, so the close event then had code 1005.
 - The client sends Node's process ID, or 0 in a browser, in CONNECT_V2 and MODULE_READY. The web manager sends its own process ID to the message manager in its place.
 - `package.json` has `"type": "module"`, and `index.js` imports `src/rtma.js` with its extension, so the package can be imported in Node.
 
