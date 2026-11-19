@@ -3,10 +3,12 @@
 // Starts a message manager, the web manager and a Python peer (peer.py),
 // then checks that RTMAClient connects, subscribes, and sends and receives
 // messages. A second test checks the error a client gets when the web
-// manager can't reach a message manager, and a third connects with wss://
-// through a TLS proxy. Skipped when pyrtma can't be imported. The wss://
-// test makes a throwaway certificate with OpenSSL, and is skipped without
-// it.
+// manager can't reach a message manager, and the last two connect with
+// wss://, through a TLS proxy and to a web manager serving wss:// itself.
+// Skipped when pyrtma can't be imported. The wss:// tests make a throwaway
+// certificate with OpenSSL, and are skipped without it; the second also
+// needs a web manager with a --cert option, which a future version of
+// pyrtma may add.
 //
 // Environment:
 //   PYTHON   Python with pyrtma installed. Defaults to python3, or python on
@@ -77,6 +79,16 @@ function make_test_cert() {
 const test_cert = skip ? null : make_test_cert();
 const skip_wss =
   skip || (test_cert ? false : `no test certificate from "${OPENSSL}"`);
+
+// Whether the web manager serves wss:// itself, with --cert and --key.
+const web_manager_help = skip
+  ? ""
+  : String(spawnSync(PYTHON, ["-m", "pyrtma.web_manager", "--help"]).stdout);
+const skip_wss_direct =
+  skip_wss ||
+  (web_manager_help.includes("--cert")
+    ? false
+    : "the web manager has no --cert option");
 
 const children = [];
 
@@ -149,7 +161,7 @@ function start_manager(port) {
   return start("message manager", PYTHON, ["-m", "pyrtma.manager", "-p", port]);
 }
 
-async function start_web_manager(mm_port) {
+async function start_web_manager(mm_port, options = []) {
   const ws_port = await free_port();
   start("web manager", PYTHON, [
     "-m",
@@ -160,9 +172,32 @@ async function start_web_manager(mm_port) {
     String(ws_port),
     "-d",
     DEFS,
+    ...options,
   ]);
   await wait_for_port(ws_port);
   return ws_port;
+}
+
+// Runs wss_client.mjs in a child process, which trusts the test certificate
+// only when trust is true, and returns what it reports.
+async function run_wss_client(server, port, trust) {
+  // NODE_TEST_CONTEXT would make the child report to the test runner.
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  delete env.NODE_EXTRA_CA_CERTS;
+  if (trust) env.NODE_EXTRA_CA_CERTS = test_cert.cert;
+  const child = spawn(process.execPath, [WSS_CLIENT, server, String(port)], {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", (data) => (out += data));
+  child.stderr.on("data", (data) => (out += data));
+  await wait_for(
+    new Promise((res) => child.on("exit", res)),
+    "the wss:// client"
+  );
+  return { result: JSON.parse(out.trim().split("\n").pop()), out };
 }
 
 function same_set(actual, expected, what) {
@@ -393,31 +428,12 @@ test(
     await new Promise((res) => proxy.listen(0, "127.0.0.1", res));
     const tls_port = proxy.address().port;
 
-    // Runs wss_client.mjs in a child process, which trusts the test
-    // certificate only when trust is true.
-    const run_client = async (trust) => {
-      // NODE_TEST_CONTEXT would make the child report to the test runner.
-      const env = { ...process.env };
-      delete env.NODE_TEST_CONTEXT;
-      delete env.NODE_EXTRA_CA_CERTS;
-      if (trust) env.NODE_EXTRA_CA_CERTS = test_cert.cert;
-      const child = spawn(
-        process.execPath,
-        [WSS_CLIENT, "wss://localhost/rtma", String(tls_port)],
-        { env, stdio: ["ignore", "pipe", "pipe"] }
-      );
-      let out = "";
-      child.stdout.on("data", (data) => (out += data));
-      child.stderr.on("data", (data) => (out += data));
-      await wait_for(
-        new Promise((res) => child.on("exit", res)),
-        "the wss:// client"
-      );
-      return { result: JSON.parse(out.trim().split("\n").pop()), out };
-    };
-
     try {
-      const trusted = await run_client(true);
+      const trusted = await run_wss_client(
+        "wss://localhost/rtma",
+        tls_port,
+        true
+      );
       const r = trusted.result;
       assert.equal(r.url, `wss://localhost:${tls_port}/rtma`);
       assert.equal(r.connected, true, trusted.out);
@@ -426,11 +442,46 @@ test(
       assert.deepEqual(r.errors, []);
 
       // Without trust in the certificate, the client must not connect.
-      const untrusted = await run_client(false);
+      const untrusted = await run_wss_client(
+        "wss://localhost/rtma",
+        tls_port,
+        false
+      );
       assert.equal(untrusted.result.connected, false, untrusted.out);
     } finally {
       for (const sock of sockets) sock.destroy();
       proxy.close();
     }
+  }
+);
+
+test(
+  "RTMAClient over wss:// served by the web manager",
+  { skip: skip_wss_direct, timeout: 60000 },
+  async () => {
+    const mm_port = await free_port();
+    start_manager(String(mm_port));
+    await wait_for_port(mm_port);
+    const ws_port = await start_web_manager(mm_port, [
+      "--cert",
+      test_cert.cert,
+      "--key",
+      test_cert.key,
+    ]);
+
+    const trusted = await run_wss_client("wss://localhost", ws_port, true);
+    const r = trusted.result;
+    assert.equal(r.url, `wss://localhost:${ws_port}/`);
+    assert.equal(r.connected, true, trusted.out);
+    assert.ok(r.module_id >= 10000, `module ID ${r.module_id}`);
+    assert.equal(r.status, "over tls");
+    assert.deepEqual(r.errors, []);
+
+    // Without trust in the certificate, the client must not connect, and
+    // the web manager serves wss:// only, so a ws:// client can't either.
+    const untrusted = await run_wss_client("wss://localhost", ws_port, false);
+    assert.equal(untrusted.result.connected, false, untrusted.out);
+    const plain = await run_wss_client("127.0.0.1", ws_port, true);
+    assert.equal(plain.result.connected, false, plain.out);
   }
 );
